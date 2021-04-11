@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Add a 3D model</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.2.0/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.2.0/mapbox-gl.js"></script>
+
+
+<style>
+body { margin: 0; padding: 0; }
+#map { position: absolute; top: 0; bottom: 0; width: 100%; }
+.my-custom-control {
+  color: black;
+  background: #ffff;
+  padding: 8px;
+  border-radius: 4px;
+  margin: 8px;
+  cursor: pointer;
+
+}
+.active {
+    background: black;
+    color: white;
+}
+.tag-marker{
+    color: black;
+  background: #ffff;
+  padding: 8px;
+  border-radius: 4px;
+  margin: 8px;
+  cursor: pointer;
+}
+
+.toolTip {
+  border: 0.5px black solid;
+  display: inline-block;
+  background: white;
+  padding: 1px 6px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 11px !important;
+}
+
+.marker {
+  max-width: 240px;
+  display: flex;
+  margin-bottom: 5em;
+}
+
+.mapboxgl-popup-tip {
+  margin-top: -1px;
+}
+
+
+
+
+
+</style>
+</head>
+<body>
+<script src="https://unpkg.com/three@0.126.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.126.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://unpkg.com/three@0.126.0/examples/js/loaders/STLLoader.js"></script>
+<script src="https://unpkg.com/three@0.126.0/examples/js/loaders/ColladaLoader.js"></script>
+<script src="https://unpkg.com/three@0.106.2/examples/js/renderers/CSS2DRenderer.js"></script>
+
+
+
+<div id="map"></div>
+<script>
+	mapboxgl.accessToken = 'pk.eyJ1IjoiZGFuYWx0byIsImEiOiJja216OXl2ejAwYnNkMnhtYmwwcmhxcmZnIn0.Ti27JJp02LpM3K1SWrAAhA';
+    var map = (window.map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/light-v10',
+        zoom: 18,
+        center: [-6.241028,53.342589],
+        pitch: 60,
+        antialias: true // create the gl context with MSAA antialiasing, so custom layers are antialiased
+    }));
+
+
+
+    const floors = [1,0]
+
+function switchFloor(floor){
+     
+        let clickedLayer = `3d-model-${floor}`
+         var visibility = map.getLayoutProperty(
+            clickedLayer,
+            'visibility'
+        );
+ 
+        // Toggle layer visibility by changing the layout object's visibility property.
+        if (visibility === 'visible') {
+        map.setLayoutProperty(
+        clickedLayer,
+        'visibility',
+        'none'
+        );
+    
+        var element = document.getElementById(`3d-model-${floor}`);
+        element.classList.remove("active");
+        } else {
+        
+        map.setLayoutProperty(
+        clickedLayer,
+        'visibility',
+        'visible'
+        );
+
+        var element = document.getElementById(`3d-model-${floor}`)
+        element.classList.add("active")
+
+        }
+     
+     
+ }
+
+class MyCustomControl {
+
+    constructor(level) {
+
+    this.level = level;
+
+    }
+
+  onAdd(map){
+    this.map = map;
+    this.container = document.createElement('div');
+    this.container.className = 'mapboxgl-ctrl my-custom-control';
+    if (this.level===0){
+        this.container.classList.add("active")
+
+    }
+    this.container.id = `3d-model-${this.level}`
+    this.container.textContent = this.level;
+
+
+    this.container.addEventListener('click', (e) => {
+        e.stopPropagation()
+        switchFloor(this.level)
+    }, false)
+
+    return this.container;
+  }
+
+  onRemove(){
+    this.container.parentNode.removeChild(this.container);
+    this.map = undefined;
+  }
+}
+
+floors.map(e=>{
+    return map.addControl(new MyCustomControl(e));
+})
+
+function drawTooltip(tooltipText, mapboxStyle = false) {
+  if (tooltipText) {
+    let divToolTip;
+    if (mapboxStyle) {
+      let divContent = document.createElement('div');
+      divContent.className = 'mapboxgl-popup-content';
+      let strong = document.createElement('strong');
+      strong.innerHTML = tooltipText;
+      divContent.appendChild(strong);
+      let tip = document.createElement('div');
+      tip.className = 'mapboxgl-popup-tip';
+      let div = document.createElement('div');
+      div.className = 'marker mapboxgl-popup-anchor-bottom';
+      div.appendChild(tip);
+      div.appendChild(divContent);
+      divToolTip = document.createElement('div');
+      divToolTip.className += 'label3D';
+      divToolTip.appendChild(div);
+    } else {
+      divToolTip = document.createElement('span');
+      divToolTip.className = this._defaults.tooltip.cssClass;
+      divToolTip.innerHTML = tooltipText;
+    }
+    return divToolTip;
+  }
+}
+
+
+
+function FloorPlan(floor) {
+
+
+    // parameters to ensure the model is georeferenced correctly on the map
+    var modelOrigin = [-6.241028, 53.342589];
+    var modelAltitude = floor*10;
+    var modelRotate = [Math.PI / 2, 0, 0];
+
+    var modelAsMercatorCoordinate = mapboxgl.MercatorCoordinate.fromLngLat(
+        modelOrigin,
+        modelAltitude
+    );
+
+    // transformation parameters to position, rotate and scale the 3D model onto the map
+    var modelTransform = {
+        translateX: modelAsMercatorCoordinate.x,
+        translateY: modelAsMercatorCoordinate.y,
+        translateZ: modelAsMercatorCoordinate.z,
+        rotateX: modelRotate[0],
+        rotateY: modelRotate[1],
+        rotateZ: modelRotate[2],
+        /* Since our 3D model is in real world meters, a scale transform needs to be
+         * applied since the CustomLayerInterface expects units in MercatorCoordinates.
+         */
+        scale: modelAsMercatorCoordinate.meterInMercatorCoordinateUnits()
+    };
+
+    var THREE = window.THREE;
+
+    // configuration of the custom layer for a 3D model per the CustomLayerInterface
+    var customLayer = {
+        id: `3d-model-${floor}`,
+        type: 'custom',
+        renderingMode: '3d',
+        onAdd: function (map, gl) {
+            this.camera = new THREE.Camera();
+            this.scene = new THREE.Scene();
+
+            // create two three.js lights to illuminate the model
+            var directionalLight = new THREE.DirectionalLight(0xffffff);
+            directionalLight.position.set(0, -70, 100).normalize();
+            this.scene.add(directionalLight);
+
+            var directionalLight2 = new THREE.DirectionalLight(0xffffff);
+            directionalLight2.position.set(0, 70, 100).normalize();
+            this.scene.add(directionalLight2);
+
+
+            var loader = new THREE.ColladaLoader();
+            loader.load( `./unit-16-floor-${floor}.dae`, 
+              function ( geometry ) {
+                this.scene.add( geometry.scene );
+            }.bind(this) 
+            );
+           
+
+
+            this.map = map;
+
+            // use the Mapbox GL JS map canvas for three.js
+            this.renderer = new THREE.WebGLRenderer({
+                canvas: map.getCanvas(),
+                context: gl,
+                antialias: true
+            });
+
+            this.renderer.autoClear = false;
+
+            
+            //tooltip with latitude
+            /*
+            this.popupRenderer = new THREE.CSS2DRenderer();
+            this.popupRenderer.setSize(this.map.getCanvas().clientWidth, this.map.getCanvas().clientHeight);
+            this.popupRenderer.domElement.style.position = 'absolute';
+            this.popupRenderer.domElement.id = 'labelCanvas'; //TODO: this value must come by parameter
+            this.popupRenderer.domElement.style.top = 0;
+            this.map.getCanvasContainer().appendChild(this.popupRenderer.domElement);
+            let divToolTip = drawTooltip("Custom Popup with Altitude", true);
+            let popupAlt = new THREE.CSS2DObject(divToolTip);
+            popupAlt.position.set(0, 10, 0);
+            this.scene.add(popupAlt);
+            */
+            
+
+
+        },
+        render: function (gl, matrix) {
+            var rotationX = new THREE.Matrix4().makeRotationAxis(
+                new THREE.Vector3(1, 0, 0),
+                modelTransform.rotateX
+            );
+            var rotationY = new THREE.Matrix4().makeRotationAxis(
+                new THREE.Vector3(0, 1, 0),
+                modelTransform.rotateY
+            );
+            var rotationZ = new THREE.Matrix4().makeRotationAxis(
+                new THREE.Vector3(0, 0, 1),
+                modelTransform.rotateZ
+            );
+
+            var m = new THREE.Matrix4().fromArray(matrix);
+            var l = new THREE.Matrix4()
+                .makeTranslation(
+                    modelTransform.translateX,
+                    modelTransform.translateY,
+                    modelTransform.translateZ
+                )
+                .scale(
+                    new THREE.Vector3(
+                        modelTransform.scale,
+                        -modelTransform.scale,
+                        modelTransform.scale
+                    )
+                )
+                .multiply(rotationX)
+                .multiply(rotationY)
+                .multiply(rotationZ);
+
+            this.camera.projectionMatrix = m.multiply(l);
+            this.renderer.resetState();
+            this.renderer.render(this.scene, this.camera);
+            //tooltip altitude
+            //this.popupRenderer.render(this.scene, this.camera);
+            
+            this.map.triggerRepaint();
+        }
+    };
+
+
+    return customLayer
+
+}
+
+
+
+    map.on('style.load', function () {
+        floors.map(floor=>{
+     
+            return map.addLayer(new FloorPlan(floor), 'waterway-label')
+        })
+        map.setLayoutProperty(
+             `3d-model-${1}`,
+             'visibility',
+             'none'
+             );
+    });
+
+
+    let geojson = {
+  "type": "Feature",
+  "properties": {
+    "level": 1,
+    "name": "Bird Exhibit",
+    "height": 0,
+    "base_height": 15,
+    "color": "blue"
+  },
+  "geometry": {
+    "coordinates": [
+    
+    [
+        [
+        -6.2410290006977505, 53.34258885277595
+        ],
+        [
+        -6.240746594350924, 53.34257625873465
+        ],
+        [
+          -6.240759847939813,
+          53.34247217812609
+        ],
+        [
+          -6.241041024483366,
+          53.34248531312264
+        ],
+        [
+        -6.2410290006977505, 53.34258885277595
+        ]
+      ]
+    
+    ],
+    "type": "Polygon"
+  }
+}
+
+map.on('load', function () {
+
+
+    map.addSource('floorplan', {
+    // GeoJSON Data source used in vector tiles, documented at
+    // https://gist.github.com/ryanbaumann/a7d970386ce59d11c16278b90dde094d
+    'type': 'geojson',
+    'data': geojson
+    });
+    map.addLayer({
+    'id': 'room-extrusion',
+    'type': 'fill-extrusion',
+    'source': 'floorplan',
+    'maxzoom':19,
+    'paint': {
+    // See the Mapbox Style Specification for details on data expressions.
+    // https://docs.mapbox.com/mapbox-gl-js/style-spec/#expressions
+    
+    // Get the fill-extrusion-color from the source 'color' property.
+    'fill-extrusion-color': ['get', 'color'],
+    
+    // Get fill-extrusion-height from the source 'height' property.
+    'fill-extrusion-height': ['get', 'height'],
+    
+    // Get fill-extrusion-base from the source 'base_height' property.
+    'fill-extrusion-base': ['get', 'base_height'],
+    
+    // Make extrusions slightly opaque for see through indoor walls.
+    'fill-extrusion-opacity': 0.5
+    }
+    });
+
+
+});
+
+
+
+   //tag marker
+   /*
+   var el = document.createElement('div');
+    el.className = 'tag-marker';
+    el.innerText = 'Temperature: 24';
+    new mapboxgl.Marker(el)
+    .setLngLat([-6.240994750585202, 53.34256253346649])
+    .addTo(map);
+    */
+      
+    //marker
+    var marker = new mapboxgl.Marker({
+    draggable: true
+    })
+    .setLngLat([-6.241028, 53.342589])
+    .addTo(map);
+    function onDragEnd() {
+        var lngLat = marker.getLngLat();
+       
+        console.log(lngLat.lng +', '+ lngLat.lat)
+    }
+    marker.on('dragend', onDragEnd);
+
+
+
+
+</script>
+
+</body>
+</html>
